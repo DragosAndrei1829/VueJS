@@ -12,11 +12,33 @@ class LocalDatabase {
         localStorage.setItem(this.dbName, JSON.stringify({
           reservations: [],
           users: [],
-          settings: {}
+          settings: {
+            samplesInitialized: false
+          }
         }))
       }
     } catch (error) {
       console.error('Error initializing database:', error)
+    }
+  }
+  
+  getSettings() {
+    try {
+      const db = this.getDB()
+      return db.settings || {}
+    } catch (error) {
+      console.error('Error getting settings:', error)
+      return {}
+    }
+  }
+  
+  updateSettings(updates) {
+    try {
+      const db = this.getDB()
+      db.settings = { ...db.settings, ...updates }
+      this.saveDB(db)
+    } catch (error) {
+      console.error('Error updating settings:', error)
     }
   }
 
@@ -330,13 +352,26 @@ const actions = {
         .filter(res => res !== null)
 
       const existingReservations = localDB.getAllReservations()
-      const allReservations = [...existingReservations, ...sampleReservations]
+      const settings = localDB.getSettings()
       
-      const uniqueReservations = allReservations.filter((res, index, self) =>
-        res && res.id && index === self.findIndex(r => r && r.id === res.id)
-      )
+      let allReservations = [...existingReservations]
+      
+      if (!settings.samplesInitialized) {
+        const existingIds = new Set(
+          existingReservations
+            .filter(r => r && r.id)
+            .map(r => r.id)
+        )
+        
+        const newSampleReservations = sampleReservations.filter(
+          sample => !existingIds.has(sample.id)
+        )
+        
+        allReservations = [...existingReservations, ...newSampleReservations]
+        localDB.updateSettings({ samplesInitialized: true })
+      }
 
-      commit('SET_RESERVATIONS', uniqueReservations)
+      commit('SET_RESERVATIONS', allReservations)
       commit('SET_ERROR', null)
     } catch (error) {
       let errorMessage = 'Error loading reservations'
